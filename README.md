@@ -1,1 +1,2 @@
-# test_eodp
+# eodp
+EODP main repository
