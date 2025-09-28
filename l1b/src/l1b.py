@@ -74,11 +74,34 @@ class l1b(initL1b):
         :param gain: gain in [rad/DN]
         :return: TOA in radiances [mW/sr/m2]
         """
+
         toa = (toa*gain)
         self.logger.debug('Sanity check. TOA in radiances after gain application ' + str(toa[1,-1]) + ' [mW/m2/sr]')
 
         return toa
 
     def plotL1bToa(self, toa_l1b, outputdir, band):
-        #TODO
-        a=1 # dummy
+        """
+        Plotting midline of TOA radiances for a given band
+        """
+
+        # Seleccionar fila central
+        mid_row = toa_l1b.shape[0] // 2
+        radiances = toa_l1b[mid_row, :]
+
+        # Crear figura
+        fig, ax = plt.subplots()
+        ax.plot(radiances, color='red', label=f"TOA L1B {band}")
+        ax.set_title(f"Effect of the Equalization for {band}")
+        ax.set_xlabel("ACT pixel [-]")
+        ax.set_ylabel("TOA [mW/m2/sr]")
+        ax.grid(True)
+        ax.legend()
+
+        # Guardar figura
+        output_path = f"{outputdir}/l1b_toa_{band}_graph.png"
+        fig.savefig(output_path)
+
+        return True  # Dummy flag, igual que antes
+
+

@@ -92,7 +92,7 @@ class opticalPhase(initIsm):
         :param Tr: Optical transmittance [-]
         :return: TOA image in irradiances [mW/m2]
         """
-        # TODO
+        toa = Tr*toa*(np.pi/4)*((D/f)^2)
         return toa
 
 
@@ -114,7 +114,35 @@ class opticalPhase(initIsm):
         :param band: band
         :return: TOA image 2D in radiances [mW/m2]
         """
-        # TODO
+
+        # Leer ISRF y normalizar
+        isrf, wv_isrf = readIsrf(self.auxdir + '/' + self.ismConfig.isrffile, band)
+        nm_isrf = isrf / np.sum(isrf)  # normalización por la suma
+
+        # Inicializar salida
+        toa = np.zeros((sgm_toa.shape[0], sgm_toa.shape[1]))
+
+        # Pixel por pixel
+        for ialt in range(sgm_toa.shape[0]):
+            for iact in range(sgm_toa.shape[1]):
+                # Interpolar espectro de este píxel en las longitudes de la ISRF
+                cs = interp1d(sgm_wv,
+                              sgm_toa[ialt, iact, :],
+                              kind='linear',
+                              fill_value=0.0,
+                              bounds_error=False)
+
+                spec_interp = cs(wv_isrf)  # espectro interpolado en λ de la ISRF
+
+                # 1. multiplicación punto a punto
+                mult = spec_interp * nm_isrf
+
+                # 2. suma del vector resultante
+                val = np.sum(mult)
+
+                # 3. asignar al pixel correspondiente
+                toa[ialt, iact] = val
+# ACABAR ESTO PORQUE NO FUNCIONA!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         return toa
 
 
