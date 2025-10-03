@@ -9,7 +9,6 @@ class l1bConfig:
 
         # Flags to enable or disable the equalization
         self.do_equalization = True
-
         # Auxiliary inputs (relative paths to the root folder)
         #--------------------------------------------------------------------------------
         # Gain, conversion factor from Digital Numbers to Radiances

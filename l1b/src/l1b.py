@@ -92,7 +92,7 @@ class l1b(initL1b):
         # Crear figura
         fig, ax = plt.subplots()
         ax.plot(radiances, color='red', label=f"TOA L1B {band}")
-        ax.set_title(f"Effect of the Equalization for {band}")
+        ax.set_title(f"Effect of NO Equalization for {band}")
         ax.set_xlabel("ACT pixel [-]")
         ax.set_ylabel("TOA [mW/m2/sr]")
         ax.grid(True)
