@@ -92,7 +92,7 @@ class opticalPhase(initIsm):
         :param Tr: Optical transmittance [-]
         :return: TOA image in irradiances [mW/m2]
         """
-        toa = Tr*toa*(np.pi/4)*((D/f)^2)
+        toa = Tr * toa * (np.pi / 4) * ((D / f) ** 2)
         return toa
 
 
@@ -103,8 +103,11 @@ class opticalPhase(initIsm):
         :param Hsys: System MTF
         :return: TOA image in irradiances [mW/m2]
         """
-        # TODO
-        return toa_ft
+        GE = fft2(toa)
+        toa_ft = ifft2(GE * fftshift(Hsys))
+
+        # Returning only the real part (physical result)
+        return np.real(toa_ft)
 
     def spectralIntegration(self, sgm_toa, sgm_wv, band):
         """
@@ -114,35 +117,30 @@ class opticalPhase(initIsm):
         :param band: band
         :return: TOA image 2D in radiances [mW/m2]
         """
+        # Load ISRF and normalize
+        resp, resp_wv = readIsrf(self.auxdir + "/" + self.ismConfig.isrffile, band)
+        resp /= np.sum(resp)
 
-        # Leer ISRF y normalizar
-        isrf, wv_isrf = readIsrf(self.auxdir + '/' + self.ismConfig.isrffile, band)
-        nm_isrf = isrf / np.sum(isrf)  # normalización por la suma
+        # Allocate output image
+        img_toa = np.zeros(sgm_toa.shape[:2], dtype=float)
 
-        # Inicializar salida
-        toa = np.zeros((sgm_toa.shape[0], sgm_toa.shape[1]))
+        # Loop through spatial dimensions
+        nrows, ncols, _ = sgm_toa.shape
+        for r in range(nrows):
+            for c in range(ncols):
+                # Interpolate spectrum of this pixel onto ISRF wavelengths
+                interp_func = interp1d(
+                    sgm_wv,
+                    sgm_toa[r, c, :],
+                    kind="linear",
+                    bounds_error=False,
+                    fill_value=(0.0, 0.0)
+                )
+                spec_on_isrf = interp_func(resp_wv * 1000.0)  # unit adjustment
 
-        # Pixel por pixel
-        for ialt in range(sgm_toa.shape[0]):
-            for iact in range(sgm_toa.shape[1]):
-                # Interpolar espectro de este píxel en las longitudes de la ISRF
-                cs = interp1d(sgm_wv,
-                              sgm_toa[ialt, iact, :],
-                              kind='linear',
-                              fill_value=0.0,
-                              bounds_error=False)
+                # Weighted sum with normalized ISRF
+                img_toa[r, c] = np.sum(spec_on_isrf * resp)
 
-                spec_interp = cs(wv_isrf)  # espectro interpolado en λ de la ISRF
-
-                # 1. multiplicación punto a punto
-                mult = spec_interp * nm_isrf
-
-                # 2. suma del vector resultante
-                val = np.sum(mult)
-
-                # 3. asignar al pixel correspondiente
-                toa[ialt, iact] = val
-# ACABAR ESTO PORQUE NO FUNCIONA!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        return toa
+        return img_toa
 
 

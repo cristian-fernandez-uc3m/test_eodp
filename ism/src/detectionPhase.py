@@ -4,6 +4,8 @@ import numpy as np
 from common.io.writeToa import writeToa
 from common.plot.plotMat2D import plotMat2D
 from common.plot.plotF import plotF
+import scipy.constants as const
+import scipy.constants
 
 class detectionPhase(initIsm):
 
@@ -104,7 +106,9 @@ class detectionPhase(initIsm):
         :param wv: Central wavelength of the band [m]
         :return: Toa in photons
         """
-        #TODO
+        h = scipy.constants.h
+        c = scipy.constants.c
+        toa_ph = toa/1000 * area_pix *tint/(h*c/wv)
         return toa_ph
 
     def phot2Electr(self, toa, QE):
@@ -114,7 +118,7 @@ class detectionPhase(initIsm):
         :param QE: Quantum efficiency [e-/ph]
         :return: toa in electrons
         """
-        #TODO
+        toae = toa * QE
         return toae
 
     def badDeadPixels(self, toa,bad_pix,dead_pix,bad_pix_red,dead_pix_red):
@@ -127,7 +131,24 @@ class detectionPhase(initIsm):
         :param dead_pix_red: Reduction in the quantum efficiency for the dead pixels [-, over 1]
         :return: toa in e- including bad & dead pixels
         """
-        #TODO
+        num_pixels = toa.shape[1]
+
+        # Cantidad de píxeles muertos y defectuosos
+        n_dead = int((dead_pix / 100.0) * num_pixels)
+        n_bad = int((bad_pix / 100.0) * num_pixels)
+
+        # --- Píxeles muertos ---
+        if n_dead > 0:
+            step_dead = max(1, num_pixels // n_dead)
+            idx_dead = np.arange(0, num_pixels, step_dead)
+            toa[:, idx_dead] *= (1 - dead_pix_red)
+
+        # --- Píxeles defectuosos ---
+        if n_bad > 0:
+            step_bad = max(1, num_pixels // n_bad)
+            idx_bad = np.arange(5, num_pixels, step_bad)
+            toa[:, idx_bad] *= (1 - bad_pix_red)
+
         return toa
 
     def prnu(self, toa, kprnu):
@@ -137,7 +158,10 @@ class detectionPhase(initIsm):
         :param kprnu: multiplicative factor to the standard normal deviation for the PRNU
         :return: TOA after adding PRNU [e-]
         """
-        #TODO
+        normal = np.random.normal(0.,1.,toa.shape[1])
+        for act in range(toa.shape[1]):
+            toa[:,act] = toa[:,act]*(1+normal[act]*kprnu)
+
         return toa
 
 
@@ -152,5 +176,10 @@ class detectionPhase(initIsm):
         :param ds_B_coeff: Empirical parameter of the model 6040 K
         :return: TOA in [e-] with dark signal
         """
-        #TODO
+        Sd = ds_A_coeff * (T/Tref)**3*np.exp(-ds_B_coeff*(1/T-1/Tref))
+        Ds = Sd*(1 + np.abs(np.random.normal(0,1,toa.shape[1])*kdsnu))
+
+        for act in range(toa.shape[1]):
+            toa[:,act] = toa[:,act]  + Ds[act]
+
         return toa
