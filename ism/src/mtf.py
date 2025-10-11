@@ -91,21 +91,28 @@ class mtf:
         :return fnAct: 1D normalised frequencies 2D ACT (f/(1/w))
         :return fnAlt: 1D normalised frequencies 2D ALT (f/(1/w))
         """
-        eps = 1e-6
-        fc = D / (lambd * focal)  # cutoff frequency
+        # Sampling of the frequencies
+        fstepAlt = 1 / nlines / w
+        fstepAct = 1 / ncolumns / w
 
-        f_alt_axis = np.linspace(-0.5 / w, 0.5 / w - eps, nlines)
-        f_act_axis = np.linspace(-0.5 / w, 0.5 / w - eps, ncolumns)
+        # Frequencies vector
+        eps = 1e-6  # epsilon
+        # centered halves of detector width - eps
+        fAlt = np.arange(-1 / (2 * w), 1 / (2 * w) - eps, fstepAlt)
+        fAct = np.arange(-1 / (2 * w), 1 / (2 * w) - eps, fstepAct)
 
-        fnAlt = f_alt_axis * w
-        fnAct = f_act_axis * w
+        fnAlt = fAlt / (1 / w)
+        fnAct = fAct / (1 / w)
 
-        alt_grid, act_grid = np.meshgrid(fnAlt, fnAct, indexing="ij")
-        fn2D = np.sqrt(alt_grid ** 2 + act_grid ** 2)
+        # nyquist_f = 1/(2/w)
+        # self.logger.info(f"Nyquist Frequency = {nyquist_f}")
 
-        fr2D = (fn2D / w) / fc
+        [fnAltxx, fnActxx] = np.meshgrid(fnAlt, fnAct, indexing='ij')
+        fn2D = np.sqrt(fnAltxx * fnAltxx + fnActxx * fnActxx)
 
-        writeMat(self.outdir, "fn2D", fn2D)
+        f_co = D / (lambd * focal)
+
+        fr2D = fn2D * (1 / w) / f_co
 
         return fn2D, fr2D, fnAct, fnAlt
 
@@ -115,13 +122,12 @@ class mtf:
         :param fr2D: 2D relative frequencies (f/fc), where fc is the optics cut-off frequency
         :return: diffraction MTF
         """
-        Hdiff = np.zeros_like(fr2D, dtype=float)
-        mask = fr2D < 1.0
-        f_valid = fr2D[mask]
-        # Here I compute diffraction MTF only where fr < 1
-        Hdiff[mask] = (2 / np.pi) * (np.arccos(f_valid) - f_valid * np.sqrt(1 - f_valid ** 2))
+        Hdiff = np.zeros((fr2D.shape[0], fr2D.shape[1]))
+        for i in range(fr2D.shape[0]):
+            for j in range(fr2D.shape[1]):
+                Hdiff[i, j] = 2 / pi * (np.arccos(fr2D[i, j]) - fr2D[i, j] * np.sqrt((1 - np.square(fr2D[i, j]))))
 
-        return np.atleast_2d(Hdiff)
+        return Hdiff
 
 
     def mtfDefocus(self, fr2D, defocus, focal, D):
@@ -133,11 +139,10 @@ class mtf:
         :param D: Telescope diameter [m]
         :return: Defocus MTF
         """
-        arg = np.pi * defocus * fr2D * (1 - fr2D)
-        J1_approx = arg / 2 - (arg ** 3) / 16 + (arg ** 5) / 384 - (arg ** 7) / 18432
-        Hdefoc = 2 * J1_approx / arg
+        x = pi * defocus * fr2D * (1 - fr2D)
+        Hdefoc = 2 * j1(x) / x
 
-        return np.atleast_2d(Hdefoc)
+        return Hdefoc
 
     def mtfWfeAberrations(self, fr2D, lambd, kLF, wLF, kHF, wHF):
         """
@@ -150,11 +155,8 @@ class mtf:
         :param wHF: RMS of high-frequency wavefront errors [m]
         :return: WFE Aberrations MTF
         """
-        factorLF = kLF * (wLF / lambd) ** 2
-        factorHF = kHF * (wHF / lambd) ** 2
-        total_factor = factorLF + factorHF
-        Hwfe = np.exp(-fr2D * (1 - fr2D) * total_factor)
-        return np.atleast_2d(Hwfe)
+        Hwfe = np.exp(-fr2D * (1 - fr2D) * (kLF * (wLF * wLF / lambd / lambd) + kHF * (wHF * wHF / lambd / lambd)))
+        return Hwfe
 
     def mtfDetector(self,fn2D):
         """
@@ -162,8 +164,8 @@ class mtf:
         :param fnD: 2D normalised frequencies (f/(1/w))), where w is the pixel width
         :return: detector MTF
         """
-        Hdet = np.where(fn2D != 0,np.abs(np.sin(np.pi * fn2D) / (np.pi * fn2D)),1.0)
-        return np.atleast_2d(Hdet)
+        Hdet = np.abs(np.sinc(fn2D))
+        return Hdet
 
     def mtfSmearing(self, fnAlt, ncolumns, ksmear):
         """
@@ -173,9 +175,11 @@ class mtf:
         :param ksmear: Amplitude of low-frequency component for the motion smear MTF in ALT [pixels]
         :return: Smearing MTF
         """
-        sinc_alt = np.where(fnAlt != 0,np.sin(np.pi * fnAlt * ksmear) / (np.pi * fnAlt * ksmear),1.0)
-        Hsmear = np.tile(sinc_alt[:, np.newaxis], (1, ncolumns))
-        return np.atleast_2d(Hsmear)
+        Hsmear = np.zeros((fnAlt.shape[0], ncolumns))
+        row_smear = np.sinc(fnAlt * ksmear)
+        for i in range(ncolumns):
+            Hsmear[:, i] = row_smear
+        return Hsmear
 
     def mtfMotion(self, fn2D, kmotion):
         """
@@ -184,80 +188,78 @@ class mtf:
         :param kmotion: Amplitude of high-frequency component for the motion smear MTF in ALT and ACT
         :return: detector MTF
         """
-        # Avoid division by zero
-        Hmotion = np.where(fn2D != 0,
-                           np.sin(np.pi * fn2D * kmotion) / (np.pi * fn2D * kmotion),
-                           1.0)  # sin(0)/0 = 1
-        return np.atleast_2d(Hmotion)
+        Hmotion = np.sinc(fn2D * kmotion)
+        return Hmotion
 
-
-    def plotMtf(self,Hdiff, Hdefoc, Hwfe, Hdet, Hsmear, Hmotion, Hsys, nlines, ncolumns, fnAct, fnAlt, directory, band):
+    def plotMtf(self, Hdiff, Hdefoc, Hwfe, Hdet, Hsmear, Hmotion, Hsys,
+                nlines, ncolumns, fnAct, fnAlt, directory, band):
         """
         Plotting the system MTF and all of its contributors
-        :param Hdiff: Diffraction MTF
-        :param Hdefoc: Defocusing MTF
-        :param Hwfe: Wavefront electronics MTF
-        :param Hdet: Detector MTF
-        :param Hsmear: Smearing MTF
-        :param Hmotion: Motion blur MTF
-        :param Hsys: System MTF
-        :param nlines: Number of lines in the TOA
-        :param ncolumns: Number of columns in the TOA
-        :param fnAct: normalised frequencies in the ACT direction (f/(1/w))
-        :param fnAlt: normalised frequencies in the ALT direction (f/(1/w))
-        :param directory: output directory
-        :param band: band
-        :return: N/A
         """
 
-        # Central pixel indices
-        center_act = fnAct.shape[0] // 2
-        center_alt = fnAlt.shape[0] // 2
+        halfAct = int(fnAct.shape[0] / 2)
+        halfAlt = int(fnAlt.shape[0] / 2)
 
-        # ===== Plot along ACT for central ALT =====
-        fig_alt, ax_alt = plt.subplots()
-        plt.suptitle(f'Alt = {center_alt} for {band}')
-        x_act = fnAct[center_act:]
-        contributors_alt = [Hdiff, Hdefoc, Hwfe, Hdet, Hsmear, Hmotion, Hsys]
-        colors = ['r', 'g', 'b', 'k', 'y', 'c', 'm']
-        labels = ['Hdiff', 'Hdefoc', 'Hwfe', 'Hdet', 'Hsmear', 'Hmotion', 'Hsys']
+        # =====================================================
+        # === PLOT ACT direction ==============================
+        # =====================================================
+        fig1, ax1 = plt.subplots(figsize=(8, 6))
+        ax1.plot(fnAct[halfAct:], Hdiff[halfAlt, halfAct:], 'b', label='Hdiff')
+        ax1.plot(fnAct[halfAct:], Hdefoc[halfAlt, halfAct:], 'c', label='Hdefoc')
+        ax1.plot(fnAct[halfAct:], Hwfe[halfAlt, halfAct:], 'g', label='Hwfe')
+        ax1.plot(fnAct[halfAct:], Hdet[halfAlt, halfAct:], 'r', label='Hdet')
+        ax1.plot(fnAct[halfAct:], Hsmear[halfAlt, halfAct:], 'm', label='Hsmear')
+        ax1.plot(fnAct[halfAct:], Hmotion[halfAlt, halfAct:], 'y', label='Hmotion')
+        ax1.plot(fnAct[halfAct:], Hsys[halfAlt, halfAct:], 'k', label='Hsys', linewidth=2)
+        ax1.axvline(fnAct[-1], color='k', linestyle='--', label='Nyquist frequency')
 
-        for H, color, label in zip(contributors_alt, colors, labels):
-            ax_alt.plot(x_act, H[center_alt, center_act:], color, label=label)
+        # Calcular valor de MTF en Nyquist (ACT)
+        mtf_nyquist_act = Hsys[0, halfAct]
 
-        ax_alt.set_xlabel('Spatial Frequencies [-]')
-        ax_alt.set_ylabel('MTF')
-        ax_alt.grid(True)
-        ax_alt.legend(loc='lower left')
-        fig_alt.savefig(f'{self.outdir}/graph_mtf_alt_{band}_graph.png')
+        # Títulos
+        ax1.set_title(f'MTF Components (ACT) for band: {band}', fontsize=13, pad=10)
+        ax1.set_xlabel('Spatial frequencies (f/(1/w)) [-]')
+        ax1.set_ylabel('MTF Value')
+        ax1.set_ylim(0, 1.05)
+        ax1.legend(loc='lower left')
+        ax1.grid(True)
 
-        # ===== Plot along ALT for central ACT =====
-        fig_act, ax_act = plt.subplots()
-        plt.suptitle(f'Act = {center_act} for {band}')
-        x_alt = fnAlt[center_alt:]
-        for H, color, label in zip(contributors_alt, colors, labels):
-            ax_act.plot(x_alt, H[center_alt:, center_act], color, label=label)
+        # Subtítulo con el valor Nyquist (8 decimales)
+        plt.suptitle(f'MTF @ Nyquist (ACT) = {mtf_nyquist_act:.8f}', fontsize=11, y=0.93)
 
-        ax_act.set_xlabel('Spatial Frequencies [-]')
-        ax_act.set_ylabel('MTF')
-        ax_act.grid(True)
-        ax_act.legend(loc='lower left')
-        fig_act.savefig(f'{self.outdir}/graph_mtf_act_{band}_graph.png')
+        # Guardar gráfico
+        fig1.tight_layout(rect=[0, 0, 1, 0.94])
+        fig1.savefig(f'{directory}/graph_mtf_act_{band}.png', dpi=300)
+        plt.close(fig1)
 
-        # ===== Save matrices =====
-        writeMat(self.outdir, "Hsys", Hsys)
-        writeMat(self.outdir, "Hdet", Hdet)
+        # =====================================================
+        # === PLOT ALT direction ==============================
+        # =====================================================
+        fig2, ax2 = plt.subplots(figsize=(8, 6))
+        ax2.plot(fnAlt[halfAlt:], Hdiff[halfAlt:, halfAct], 'b', label='Hdiff')
+        ax2.plot(fnAlt[halfAlt:], Hdefoc[halfAlt:, halfAct], 'c', label='Hdefoc')
+        ax2.plot(fnAlt[halfAlt:], Hwfe[halfAlt:, halfAct], 'g', label='Hwfe')
+        ax2.plot(fnAlt[halfAlt:], Hdet[halfAlt:, halfAct], 'r', label='Hdet')
+        ax2.plot(fnAlt[halfAlt:], Hsmear[halfAlt:, halfAct], 'm', label='Hsmear')
+        ax2.plot(fnAlt[halfAlt:], Hmotion[halfAlt:, halfAct], 'y', label='Hmotion')
+        ax2.plot(fnAlt[halfAlt:], Hsys[halfAlt:, halfAct], 'k', label='Hsys', linewidth=2)
+        ax2.axvline(fnAlt[-1], color='k', linestyle='--', label='Nyquist frequency')
 
-        # ===== Nyquist MTF report =====
-        nyquist_file = r"C:\\Users\\HP\\Desktop\\EODP_TER_2021-20250911T164647Z-1-001\\EODP_TER_2021\\EODP-TS-ISM\\myoutput\\mtf_nyquist.txt"
+        # Calcular valor de MTF en Nyquist (ALT)
+        mtf_nyquist_alt = Hsys[halfAlt, 0]
 
-        if band == 'VNIR-0':
-            open(nyquist_file, 'w').close()  # truncate
+        # Títulos
+        ax2.set_title(f'MTF Components (ALT) for band: {band}', fontsize=13, pad=10)
+        ax2.set_xlabel('Spatial frequencies (f/(1/w)) [-]')
+        ax2.set_ylabel('MTF Value')
+        ax2.set_ylim(0, 1.05)
+        ax2.legend(loc='lower left')
+        ax2.grid(True)
 
-        with open(nyquist_file, 'a') as f:
-            f.write(f'{band}\n')
-            f.write(f'mtf_nyquist Act={Hsys[0, center_act]}\n')
-            f.write(f'mtf_nyquist Alt={Hsys[center_alt, 0]}\n')
+        # Subtítulo con el valor Nyquist (8 decimales)
+        plt.suptitle(f'MTF @ Nyquist (ALT) = {mtf_nyquist_alt:.8f}', fontsize=11, y=0.93)
 
-
-
+        # Guardar gráfico
+        fig2.tight_layout(rect=[0, 0, 1, 0.94])
+        fig2.savefig(f'{directory}/graph_mtf_alt_{band}.png', dpi=300)
+        plt.close(fig2)

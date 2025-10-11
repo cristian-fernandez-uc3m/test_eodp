@@ -1,3 +1,4 @@
+# EODP-TS-L1B-0001. EQUALIZATION AND RESTORATION TEST
 
 import numpy as np
 from common.io.writeToa import readToa

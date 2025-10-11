@@ -38,7 +38,7 @@ def readToa(directory, filename):
     ncfile = os.path.join(directory, filename)
     if not os.path.isfile(ncfile):
         sys.exit('File not found ' +ncfile + ". Exiting.")
-    print('Reading ' + ncfile)
+    #print('Reading ' + ncfile)
 
     # Load dataset
     dset = Dataset(ncfile)
@@ -48,6 +48,6 @@ def readToa(directory, filename):
 
     dset.close()
 
-    print('Size of matrix ' + str(toa.shape))
+    #print('Size of matrix ' + str(toa.shape))
 
     return toa

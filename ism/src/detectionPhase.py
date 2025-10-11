@@ -133,17 +133,16 @@ class detectionPhase(initIsm):
         """
         num_pixels = toa.shape[1]
 
-        # Cantidad de píxeles muertos y defectuosos
         n_dead = int((dead_pix / 100.0) * num_pixels)
         n_bad = int((bad_pix / 100.0) * num_pixels)
 
-        # --- Píxeles muertos ---
+        # --- Dead Pixels ---
         if n_dead > 0:
             step_dead = max(1, num_pixels // n_dead)
             idx_dead = np.arange(0, num_pixels, step_dead)
             toa[:, idx_dead] *= (1 - dead_pix_red)
 
-        # --- Píxeles defectuosos ---
+        # --- Bad Pixels ---
         if n_bad > 0:
             step_bad = max(1, num_pixels // n_bad)
             idx_bad = np.arange(5, num_pixels, step_bad)
