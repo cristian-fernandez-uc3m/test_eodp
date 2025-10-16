@@ -62,7 +62,38 @@ class l1c(initL1c):
         :param band: band
         :return: L1C radiances, L1C latitude and longitude in degrees
         '''
-        #TODO
+
+        tck = bisplrep(lat, lon, toa)
+        m = mgrs.MGRS()
+        mgrs_tiles = set()
+        mgrs_grid = np.zeros((lat.shape[0], lat.shape[1]))
+
+        for i in range(lat.shape[0]):
+            for j in range(lon.shape[1]):
+                mgrs_code = str(
+                    m.toMGRS(
+                        lat[i, j],
+                        lon[i, j],
+                        inDegrees=True,
+                        MGRSPrecision=self.l1cConfig.mgrs_tile_precision
+                    )
+                )
+                mgrs_tiles.add(mgrs_code)
+
+        mgrs_tiles = list(mgrs_tiles)
+        n_tiles = len(mgrs_tiles)
+
+        lat_l1c = np.zeros(n_tiles)
+        lon_l1c = np.zeros(n_tiles)
+        toa_l1c = np.zeros(n_tiles)
+
+        for idx in range(n_tiles):
+            lat_l1c[idx], lon_l1c[idx] = m.toLatLon(mgrs_tiles[idx], inDegrees=True)
+            toa_l1c[idx] = bisplev(lat_l1c[idx], lon_l1c[idx], tck)
+
+        self.plotL1cToa(lat_l1c, lon_l1c, toa_l1c, band)
+
+
         return lat_l1c, lon_l1c, toa_l1c
 
     def checkSize(self, lat,toa):
@@ -73,4 +104,24 @@ class l1c(initL1c):
         :param toa: Radiance 2D matrix
         :return: NA
         '''
-        #TODO
+
+    def plotL1cToa(self, lat_l1c, lon_l1c, toa_l1c, band):
+        jet = cm.get_cmap('jet', len(lat_l1c))
+        toa_l1c[np.argwhere(toa_l1c < 0)] = 0
+        max_toa = np.max(toa_l1c)
+
+        fig = plt.figure(figsize=(20, 10))
+        clr = np.zeros(len(lat_l1c))
+
+        for ii in range(len(lat_l1c)):
+            clr = jet(toa_l1c[ii] / max_toa)
+            plt.plot(lon_l1c[ii], lat_l1c[ii], '.', color=clr, markersize=10)
+
+        plt.title('Projection on Ground', fontsize=20)
+        plt.xlabel('Longitude [deg]', fontsize=16)
+        plt.ylabel('Latitude [deg]', fontsize=16)
+        plt.grid(True)
+        plt.axis('equal')
+
+        plt.savefig(self.outdir + 'toa_' + band + '.png')
+        plt.close(fig)
