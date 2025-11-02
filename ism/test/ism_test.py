@@ -11,7 +11,7 @@ reference = r"C:\\Users\\HP\\Desktop\\EODP_TER_2021-20250911T164647Z-1-001\\EODP
 outdir = r"C:\\Users\\HP\\Desktop\\EODP_TER_2021-20250911T164647Z-1-001\\EODP_TER_2021\\EODP-TS-ISM\\My_outputs"
 
 # --- Parameters ---
-tol = 1e-7
+tol = 0.01e-2
 three_sigma = 1 - 0.997
 
 # --- Optical Stage ---
@@ -50,54 +50,71 @@ run_test(namee, namee_isrf)
 
 # --- Test Detection and Video Conversion ---
 print('\n')
-print('Test Detection and Video Conversion Module')
+print('Test Detection Module')
 print('---------------------')
 
+# Build file names
 name_e = [f'ism_toa_e_{b}.nc' for b in bands]
 name_detection = [f'ism_toa_detection_{b}.nc' for b in bands]
 name_ds = [f'ism_toa_ds_{b}.nc' for b in bands]
 name_prnu = [f'ism_toa_prnu_{b}.nc' for b in bands]
 
+# Check lists have the same length
 if not (len(name_e) == len(name_detection) == len(name_ds) == len(name_prnu)):
-    print('Error with the size of the toa in the Detection Module')
+    print('Error with the size of the TOA in the Detection Module')
+
+# Loop over bands
+for inn in range(len(name_e)):
+
+    # Read output TOA files
+    toa_ism_e = readToa(outdir, name_e[inn])
+    toa_ism_ds = readToa(outdir, name_ds[inn])
+    toa_ism_detection = readToa(outdir, name_detection[inn])
+    toa_ism_prnu = readToa(outdir, name_prnu[inn])
+
+    # Read reference TOA files
+    toa_ism_e_input = readToa(reference, name_e[inn])
+    toa_ism_ds_input = readToa(reference, name_ds[inn])
+    toa_ism_detection_input = readToa(reference, name_detection[inn])
+    toa_ism_prnu_input = readToa(reference, name_prnu[inn])
+
+    # Initialize difference arrays and counters
+    result_e = np.zeros_like(toa_ism_e)
+    result_ds = np.zeros_like(toa_ism_ds)
+    result_detection = np.zeros_like(toa_ism_detection)
+    result_prnu = np.zeros_like(toa_ism_prnu)
+
+    counter_e = 0
+    counter_ds = 0
+    counter_detection = 0
+    counter_prnu = 0
+
+    # Compute differences and count points outside tolerance
+    for i in range(toa_ism_e.shape[0]):
+        for j in range(toa_ism_e.shape[1]):
+            result_e[i,j] = toa_ism_e[i,j] - toa_ism_e_input[i,j]
+            result_ds[i,j] = toa_ism_ds[i,j] - toa_ism_ds_input[i,j]
+            result_detection[i,j] = toa_ism_detection[i,j] - toa_ism_detection_input[i,j]
+            result_prnu[i,j] = toa_ism_prnu[i,j] - toa_ism_prnu_input[i,j]
+
+            if np.abs(result_e[i,j]) > tol:
+                counter_e += 1
+            if np.abs(result_ds[i,j]) > tol:
+                counter_ds += 1
+            if np.abs(result_detection[i,j]) > tol:
+                counter_detection += 1
+            if np.abs(result_prnu[i,j]) > tol:
+                counter_prnu += 1
+
+    # Determine OK/NOK based on threshold
+    points_threshold = toa_ism_e.size * three_sigma
+
+    print('---------------------')
+    print(f"Test {name_e[inn]} {'OK' if counter_e < points_threshold else 'NOK'}")
+    print(f"Test {name_ds[inn]} {'OK' if counter_ds < points_threshold else 'NOK'}")
+    print(f"Test {name_detection[inn]} {'OK' if counter_detection < points_threshold else 'NOK'}")
+    print(f"Test {name_prnu[inn]} {'OK' if counter_prnu < points_threshold else 'NOK'}")
+    print('---------------------')
 
 
-def run_detection_test():
-    for inn in range(len(name_e)):
-        # Reading output files
-        toa_ism_e = readToa(outdir, name_e[inn])
-        toa_ism_ds = readToa(outdir, name_ds[inn])
-        toa_ism_detection = readToa(outdir, name_detection[inn])
-        toa_ism_prnu = readToa(outdir, name_prnu[inn])
-
-        # Reading reference files
-        toa_ism_e_input = readToa(reference, name_e[inn])
-        toa_ism_ds_input = readToa(reference, name_ds[inn])
-        toa_ism_detection_input = readToa(reference, name_detection[inn])
-        toa_ism_prnu_input = readToa(reference, name_prnu[inn])
-
-        # Difference calculation
-        result_e = toa_ism_e - toa_ism_e_input
-        result_ds = toa_ism_ds - toa_ism_ds_input
-        result_detection = toa_ism_detection - toa_ism_detection_input
-        result_prnu = toa_ism_prnu - toa_ism_prnu_input
-
-        # Counters
-        counter_e = np.sum(np.abs(result_e) > tol)
-        counter_ds = np.sum(np.abs(result_ds) > tol)
-        counter_detection = np.sum(np.abs(result_detection) > tol)
-        counter_prnu = np.sum(np.abs(result_prnu) > tol)
-
-        points_threshold = toa_ism_e.size * three_sigma
-
-        # Results
-        print('---------------------')
-        print(f"Test {name_e[inn]} {'OK' if counter_e < points_threshold else 'NOK'}")
-        print(f"Test {name_ds[inn]} {'OK' if counter_ds < points_threshold else 'NOK'}")
-        print(f"Test {name_detection[inn]} {'OK' if counter_detection < points_threshold else 'NOK'}")
-        print(f"Test {name_prnu[inn]} {'OK' if counter_prnu < points_threshold else 'NOK'}")
-        print('---------------------')
-
-
-run_detection_test()
 

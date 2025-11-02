@@ -67,11 +67,3 @@ for idx, band in enumerate(bands):
     plt_path2 = os.path.join(out_dir, f'ism_toa_isrf_{band}.png')
     plt.savefig(plt_path2)
     plt.close()
-
-
-
-
-
-
-
-

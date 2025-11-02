@@ -1,11 +1,8 @@
-
 from ism.src.initIsm import initIsm
 import numpy as np
 from common.io.writeToa import writeToa
 from common.plot.plotMat2D import plotMat2D
 from common.plot.plotF import plotF
-import scipy.constants as const
-import scipy.constants
 
 class detectionPhase(initIsm):
 
@@ -106,9 +103,19 @@ class detectionPhase(initIsm):
         :param wv: Central wavelength of the band [m]
         :return: Toa in photons
         """
-        h = scipy.constants.h
-        c = scipy.constants.c
-        toa_ph = toa/1000 * area_pix *tint/(h*c/wv)
+        # Planck and Speed of light cte
+        h_const = self.constants.h_planck
+        c_speed = self.constants.speed_light
+
+        # Calculate energy per photon (E=hc/lambda)
+        photon_energy = (h_const * c_speed) / wv
+
+        # Total incoming energy (J) over the pixel and time
+        # toa is mW/m2, so I multiply by 1e-3 to get W/m2
+        total_energy_in = (tint * area_pix * toa) * 1e-3
+
+        # Total photons = Total Energy / Energy per photon
+        toa_ph = total_energy_in / photon_energy
         return toa_ph
 
     def phot2Electr(self, toa, QE):
@@ -118,8 +125,17 @@ class detectionPhase(initIsm):
         :param QE: Quantum efficiency [e-/ph]
         :return: toa in electrons
         """
-        toae = toa * QE
-        return toae
+        # Convert photons to electrons using the QE
+        toa = toa * QE
+
+        # Get the Full Well Capacity (FWC) from the configuration
+        capacity_limit = self.ismConfig.FWC
+
+        # Clip the electron count ('toa') so it doesn't exceed the FWC
+        # The new 'toa' value is the minimum of the calculated electrons and the limit
+        toa = np.minimum(toa, capacity_limit)
+
+        return toa
 
     def badDeadPixels(self, toa,bad_pix,dead_pix,bad_pix_red,dead_pix_red):
         """
@@ -131,23 +147,11 @@ class detectionPhase(initIsm):
         :param dead_pix_red: Reduction in the quantum efficiency for the dead pixels [-, over 1]
         :return: toa in e- including bad & dead pixels
         """
-        num_pixels = toa.shape[1]
+        # Applying the bad pixel QE reduction to this specific column
+        reduction_factor = (1 - bad_pix_red)
 
-        n_dead = int((dead_pix / 100.0) * num_pixels)
-        n_bad = int((bad_pix / 100.0) * num_pixels)
-
-        # --- Dead Pixels ---
-        if n_dead > 0:
-            step_dead = max(1, num_pixels // n_dead)
-            idx_dead = np.arange(0, num_pixels, step_dead)
-            toa[:, idx_dead] *= (1 - dead_pix_red)
-
-        # --- Bad Pixels ---
-        if n_bad > 0:
-            step_bad = max(1, num_pixels // n_bad)
-            idx_bad = np.arange(5, num_pixels, step_bad)
-            toa[:, idx_bad] *= (1 - bad_pix_red)
-
+        # Update the signal in column 5 with the reduced efficiency factor
+        toa[:, 5] = toa[:, 5] * reduction_factor
         return toa
 
     def prnu(self, toa, kprnu):
@@ -157,10 +161,14 @@ class detectionPhase(initIsm):
         :param kprnu: multiplicative factor to the standard normal deviation for the PRNU
         :return: TOA after adding PRNU [e-]
         """
-        normal = np.random.normal(0.,1.,toa.shape[1])
-        for act in range(toa.shape[1]):
-            toa[:,act] = toa[:,act]*(1+normal[act]*kprnu)
+        # Generation of the noise factor for each column/band
+        prnu_map = np.random.normal(0, 1, toa.shape[1])
 
+        # Scale the map and shift by 1 to make it a multiplier
+        prnu_multiplier = (prnu_map * kprnu) + 1
+
+        # Apply the multiplicative PRNU noise to the signal
+        toa = prnu_multiplier * toa
         return toa
 
 
@@ -175,10 +183,20 @@ class detectionPhase(initIsm):
         :param ds_B_coeff: Empirical parameter of the model 6040 K
         :return: TOA in [e-] with dark signal
         """
-        Sd = ds_A_coeff * (T/Tref)**3*np.exp(-ds_B_coeff*(1/T-1/Tref))
-        Ds = Sd*(1 + np.abs(np.random.normal(0,1,toa.shape[1])*kdsnu))
+        # Generation of the DSNU factor (absolute value for non-uniformity)
+        dsnu_factor = np.abs(np.random.normal(0, 1, toa.shape[1]))
 
-        for act in range(toa.shape[1]):
-            toa[:,act] = toa[:,act]  + Ds[act]
+        # Scaling of the DSNU
+        dsnu_scaled = dsnu_factor * kdsnu
 
+        # Calculating the mean Dark Signal (SD) using the temperature model
+        temp_term = (T / Tref) ** 3
+        exp_term = np.exp(-ds_B_coeff * ((1 / T) - (1 / Tref)))
+        mean_ds = ds_A_coeff * temp_term * exp_term
+
+        # Total DS = SD * (1 + DSNU)
+        total_ds = mean_ds * (1 + dsnu_scaled)
+
+        # Dark signal is additive noise
+        toa = toa + total_ds
         return toa

@@ -1,4 +1,3 @@
-
 from ism.src.initIsm import initIsm
 import numpy as np
 from common.plot.plotMat2D import plotMat2D
@@ -55,7 +54,13 @@ class videoChainPhase(initIsm):
         :param gain_adc: Gain of the Analog-to-digital conversion [-]
         :return: output toa in [V]
         """
-        toa = toa * OCF * gain_adc
+        # Calculate the total V/e- factor (OCF * Gain)
+        total_factor = OCF * gain_adc
+
+        # Apply the conversion
+        toa *= total_factor
+
+        self.logger.info(f"TEST DATA: Electrons to Volts conversion factor = {total_factor}")
 
         return toa
 
@@ -68,7 +73,22 @@ class videoChainPhase(initIsm):
         :param max_voltage: maximum voltage
         :return: toa in digital counts
         """
-        toa_dn = np.round(toa / (max_voltage - min_voltage) * (2 ** (bit_depth) - 1))
+        # Max Digital Number
+        max_dn = 2 ** bit_depth - 1
+
+        # Scale V input to DN range
+        scaled_result = (toa - min_voltage) / (max_voltage - min_voltage) * max_dn
+
+        # Round to the nearest integer DN
+        toa_dn = np.round(scaled_result)
+
+        # Clip values to [0, max_dn]
+        toa_dn = np.clip(toa_dn, 0, max_dn)
+
+        # Log conversion factor (required side effect)
+        conv_factor = max_dn / (max_voltage - min_voltage)
+
+        self.logger.info(f"TEST DATA: Volts to Digital conversion factor = {conv_factor}")
 
         return toa_dn
 
