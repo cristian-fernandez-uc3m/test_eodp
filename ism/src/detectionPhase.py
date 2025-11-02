@@ -110,12 +110,17 @@ class detectionPhase(initIsm):
         # Calculate energy per photon (E=hc/lambda)
         photon_energy = (h_const * c_speed) / wv
 
+        E_photon_for_log = h_const * c_speed / wv
+        log_factor = area_pix * tint / E_photon_for_log
+        self.logger.info(f"TEST DATA: Irradiance to photons conversion factor = {log_factor}")
+
         # Total incoming energy (J) over the pixel and time
         # toa is mW/m2, so I multiply by 1e-3 to get W/m2
         total_energy_in = (tint * area_pix * toa) * 1e-3
 
         # Total photons = Total Energy / Energy per photon
         toa_ph = total_energy_in / photon_energy
+
         return toa_ph
 
     def phot2Electr(self, toa, QE):
@@ -134,6 +139,8 @@ class detectionPhase(initIsm):
         # Clip the electron count ('toa') so it doesn't exceed the FWC
         # The new 'toa' value is the minimum of the calculated electrons and the limit
         toa = np.minimum(toa, capacity_limit)
+
+        self.logger.info(f"TEST DATA: Photons to electrons conversion factor = {QE}")
 
         return toa
 

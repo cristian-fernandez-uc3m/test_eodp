@@ -8,7 +8,7 @@ bands = myglobal.bands
 
 # --- Directories ---
 reference = r"C:\\Users\\HP\\Desktop\\EODP_TER_2021-20250911T164647Z-1-001\\EODP_TER_2021\\EODP-TS-ISM\\output"
-outdir = r"C:\\Users\\HP\\Desktop\\EODP_TER_2021-20250911T164647Z-1-001\\EODP_TER_2021\\EODP-TS-ISM\\My_outputs"
+outdir = r"C:\\Users\\HP\\Desktop\\EODP_TER_2021-20250911T164647Z-1-001\\EODP_TER_2021\\EODP-TS-ISM\\My_outputs_ISM_0001_and_0002"
 
 # --- Parameters ---
 tol = 0.01e-2
